@@ -22,7 +22,7 @@ public class TPModelValidator implements ModelValidator{
 		//Doc validators
 		engine.addDocValidate(MInOut.Table_Name, this);
 		//model validators
-		engine.addModelChange(MInOutLine.Table_Name, this);
+		//engine.addModelChange(MInOutLine.Table_Name, this);
 		//engine.addModelChange(MOrderLine.Table_Name, this);
 	}
 
@@ -42,7 +42,7 @@ public class TPModelValidator implements ModelValidator{
 	public String modelChange(PO po, int type) throws Exception {
 		
 		//Shipment Expiry control
-		if(po.get_TableName().equalsIgnoreCase(MInOutLine.Table_Name) && (type == CHANGETYPE_NEW || type == CHANGETYPE_CHANGE)){
+		/*if(po.get_TableName().equalsIgnoreCase(MInOutLine.Table_Name) && (type == CHANGETYPE_NEW || type == CHANGETYPE_CHANGE)){
 			MInOutLine inOutLine = (MInOutLine) po;
 			MDocType dc = (MDocType) inOutLine.getM_InOut().getC_DocType();
 			
@@ -53,7 +53,7 @@ public class TPModelValidator implements ModelValidator{
 					throw new AdempiereException("MISSING EXPIRY DATE - Please fill expiry date!");
 			}
 		//Sales order Expiry control	
-		}/*else if(po.get_TableName().equalsIgnoreCase(MOrderLine.Table_Name) && (type == CHANGETYPE_NEW || type == CHANGETYPE_CHANGE)){
+		}else if(po.get_TableName().equalsIgnoreCase(MOrderLine.Table_Name) && (type == CHANGETYPE_NEW || type == CHANGETYPE_CHANGE)){
 			
 			MOrderLine ol = (MOrderLine) po;
 			int M_Locator_ID = ol.getC_Order().getM_Warehouse_ID();
