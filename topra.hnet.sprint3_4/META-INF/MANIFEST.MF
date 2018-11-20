@@ -1,0 +1,12 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Spring3_4
+Bundle-SymbolicName: topra.hnet.sprint3_4
+Bundle-Version: 1.0.0.qualifier
+Bundle-RequiredExecutionEnvironment: JavaSE-1.8
+Require-Bundle: org.adempiere.base;bundle-version="4.1.0",
+ org.adempiere.plugin.utils;bundle-version="4.1.0"
+Service-Component: TopraModelValidator.xml,
+ TopraCollouts.xml
+Bundle-ActivationPolicy: lazy
+
