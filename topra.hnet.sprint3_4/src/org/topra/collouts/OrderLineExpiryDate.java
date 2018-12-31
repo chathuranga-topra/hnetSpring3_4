@@ -1,8 +1,11 @@
 package org.topra.collouts;
 
+import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.logging.Level;
 
@@ -12,6 +15,7 @@ import org.compiere.model.GridTab;
 import org.compiere.model.MDocType;
 import org.compiere.model.MOrderLine;
 import org.compiere.model.MStorageOnHand;
+import org.compiere.model.MTab;
 import org.compiere.util.CLogger;
 import org.compiere.util.DB;
 
@@ -40,7 +44,7 @@ public class OrderLineExpiryDate implements IColumnCallout{
 		M_Product_ID = (int) value;
 		M_Locator_ID = (int) mTab.getParentTab().getValue("M_WareHouse_ID");
 			
-			MStorageOnHand storageOnHand = getImmediateASI(ctx ,M_Product_ID ,M_Locator_ID,mTab.getTrxInfo());
+			MStorageOnHand storageOnHand = getImmediateASI(ctx ,M_Product_ID ,M_Locator_ID,mTab.getTrxInfo(), mTab);
 			
 			if(storageOnHand!= null)
 				mTab.setValue("M_AttributeSetInstance_ID", storageOnHand.getM_AttributeSetInstance_ID());
@@ -50,9 +54,10 @@ public class OrderLineExpiryDate implements IColumnCallout{
 	}
 	
 	//getting the immediate expiery date based Attribute set instance
-	public MStorageOnHand getImmediateASI(Properties ctx,int M_Product_ID , int M_Locator_ID , String trx){
+	public MStorageOnHand getImmediateASI(Properties ctx,int M_Product_ID , int M_Locator_ID , String trx , GridTab mTab){
 		
 		MStorageOnHand storageOnHand = null;
+		BigDecimal reserved = null;
 		
 		String sql = "SELECT M_StorageOnHand.* "
 			+ "FROM M_StorageOnHand "
@@ -63,8 +68,8 @@ public class OrderLineExpiryDate implements IColumnCallout{
 			+ "AND M_StorageOnHand.M_Locator_ID = ? "
 			+ "AND M_StorageOnHand.M_AttributeSetInstance_ID > 0 "
 			+ "AND QtyOnHand <> 0 "
-			+ "ORDER BY M_AttributeSetInstance.guaranteedate ASC "
-			+ "FETCH FIRST 1 ROWS ONLY";
+			+ "ORDER BY M_AttributeSetInstance.guaranteedate ASC ";
+			
 		
 		PreparedStatement pstmt = null;
 		ResultSet rs = null;
@@ -77,6 +82,23 @@ public class OrderLineExpiryDate implements IColumnCallout{
 			rs = pstmt.executeQuery ();
 			while(rs.next ()){
 				storageOnHand = new MStorageOnHand (ctx, rs, trx);
+				reserved = MOrderLine.getNotReserved(ctx, M_Locator_ID, M_Product_ID, storageOnHand.getM_AttributeSetInstance_ID(),mTab.getRecord_ID());
+				
+				//No reserved quantity
+				if(reserved == null)
+					return storageOnHand;
+				
+				//reserved quantity is equal to the on hand quantity
+				if(storageOnHand.getQtyOnHand().doubleValue() == reserved.doubleValue())
+					continue;
+				
+				//reserved quantity is less than to the on hand quantity
+				if(storageOnHand.getQtyOnHand().doubleValue() > reserved.doubleValue())
+					return storageOnHand;
+				
+				//reserved quantity is greater than to the on hand quantity
+				if(storageOnHand.getQtyOnHand().doubleValue() < reserved.doubleValue())
+					continue;
 			}
 		}
 		catch (SQLException ex)
