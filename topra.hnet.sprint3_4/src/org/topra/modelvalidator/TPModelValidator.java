@@ -1,11 +1,16 @@
 package org.topra.modelvalidator;
 
+import java.math.BigDecimal;
+import java.util.Properties;
+
 import org.adempiere.exceptions.AdempiereException;
 import org.compiere.model.MAttributeSetInstance;
 import org.compiere.model.MClient;
 import org.compiere.model.MDocType;
 import org.compiere.model.MInOut;
 import org.compiere.model.MInOutLine;
+import org.compiere.model.MOrderLine;
+import org.compiere.model.MStorageOnHand;
 import org.compiere.model.ModelValidationEngine;
 import org.compiere.model.PO;
 import org.compiere.model.ModelValidator;
@@ -23,7 +28,7 @@ public class TPModelValidator implements ModelValidator{
 		engine.addDocValidate(MInOut.Table_Name, this);
 		//model validators
 		//engine.addModelChange(MInOutLine.Table_Name, this);
-		//engine.addModelChange(MOrderLine.Table_Name, this);
+		engine.addModelChange(MOrderLine.Table_Name, this);
 	}
 
 	@Override
@@ -52,18 +57,55 @@ public class TPModelValidator implements ModelValidator{
 				if(instance == null || instance.getGuaranteeDate() == null)
 					throw new AdempiereException("MISSING EXPIRY DATE - Please fill expiry date!");
 			}
+			
+		}	
+		*/	
 		//Sales order Expiry control	
-		}else if(po.get_TableName().equalsIgnoreCase(MOrderLine.Table_Name) && (type == CHANGETYPE_NEW || type == CHANGETYPE_CHANGE)){
-			
+		if(po.get_TableName().equalsIgnoreCase(MOrderLine.Table_Name) 
+				&& (type == CHANGETYPE_NEW || type == CHANGETYPE_CHANGE)
+		){
 			MOrderLine ol = (MOrderLine) po;
-			int M_Locator_ID = ol.getC_Order().getM_Warehouse_ID();
-			MStorageOnHand[] onHands = MStorageOnHand.getAllWithASI(po.getCtx(), ol.getM_Product_ID(), M_Locator_ID, false, ol.get_TrxName());
+			//VALIDATE FOR DOCUMWNT TYPE
+			MDocType dt = (MDocType) ol.getC_Order().getC_DocTypeTarget();
 			
-			for(MStorageOnHand oh : onHands){
-				System.out.println("OH : " + oh);
+			if(!dt.get_ValueAsBoolean("IsExpiryControl"))
+			{
+				//document validate for drafted and in progress
+				if(!ol.getC_Order().getDocAction().equals("CO") || !ol.getC_Order().getDocAction().equals("PR"))
+					return"";
 			}
 			
-		}*/
+			
+			int M_Locator_ID = ol.getC_Order().getM_Warehouse_ID();
+			MStorageOnHand[] onHands = MStorageOnHand.getAllWithASI(po.getCtx(), ol.getM_Product_ID(), M_Locator_ID, false, ol.get_TrxName());
+			BigDecimal notReserved = new BigDecimal(0);
+			BigDecimal freeQty = new BigDecimal(0);
+			
+			for(MStorageOnHand oh : onHands){
+				
+				notReserved = MOrderLine.getNotReserved(po.getCtx(), 
+					ol.getM_Warehouse_ID(), 
+					ol.getM_Product_ID(), 
+					oh.getM_AttributeSetInstance_ID(), 
+					ol.get_ID());
+				
+				notReserved = notReserved == null?new BigDecimal(0) :notReserved;
+				
+				freeQty = oh.getQtyOnHand().subtract(notReserved);
+				
+				if(freeQty.doubleValue() <=0){
+					continue;
+				}
+				ol.setM_AttributeSetInstance_ID(oh.get_ID());
+				//validate the entered quantity with onhand + notreserved 
+				if(ol.getQtyEntered().doubleValue() > freeQty.doubleValue()){
+					ol.setQty(freeQty);
+				}
+				
+				if(ol.getM_AttributeSetInstance() != null)
+					break;
+			}
+		}
 		
 		return null;
 	}
@@ -87,10 +129,8 @@ public class TPModelValidator implements ModelValidator{
 					
 					if(instance == null || instance.getGuaranteeDate() == null)
 						throw new AdempiereException("MISSING EXPIRY DATE - Line no : " + line.getLine() + " Product : " + line.getM_Product().getName());
-					
 				}
 			}
-			
 		}
 		
 		return null;

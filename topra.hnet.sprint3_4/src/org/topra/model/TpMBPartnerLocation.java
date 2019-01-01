@@ -37,14 +37,27 @@ public class TpMBPartnerLocation extends MBPartnerLocation{
 		
 		if(loc != null){
 
-			loc.setAddress1(loc.getAddress1().toUpperCase());
-			loc.setAddress2(loc.getAddress2().toUpperCase());
-			loc.setAddress3(loc.getAddress2().toUpperCase());
-			loc.setAddress4(loc.getAddress4().toUpperCase());
+			if(loc.getAddress1()!=null){
+				loc.setAddress1(loc.getAddress1().toUpperCase());
+			}
+			
+			if(loc.getAddress2()!=null){
+				loc.setAddress2(loc.getAddress2().toUpperCase());
+			}
+			
+			if(loc.getAddress3()!=null){
+				loc.setAddress3(loc.getAddress3().toUpperCase());
+			}
+			
+			if(loc.getAddress4()!=null){
+				loc.setAddress4(loc.getAddress4().toUpperCase());
+			}
 			
 			loc.save(get_TrxName());
 			
-			setName(getName().toUpperCase());
+			if(getName()!=null){
+				setName(getName().toUpperCase());
+			}
 		}
 		
 		return super.afterSave(newRecord, success);
