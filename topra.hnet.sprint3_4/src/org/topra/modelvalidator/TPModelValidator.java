@@ -82,11 +82,11 @@ public class TPModelValidator implements ModelValidator{
 				//validate zero free qty
 				if(freeQty.doubleValue() <= 0.0){
 					throw new AdempiereException("No more stock available for this item to place new order!");
+				}else{
+					ol.setQty(freeQty);
+					ol.setPrice();
+					ol.setLineNetAmt();
 				}
-				
-				ol.setQty(freeQty);
-				ol.setPrice();
-				ol.setLineNetAmt();
 			}
 			
 		}
@@ -104,37 +104,37 @@ public class TPModelValidator implements ModelValidator{
 			//VALIDATE FOR DOCUMENT STATUS USING WORKFLOWS
 			if(this.getWorkFlowCount(po , movement.get_ID()) != 0)
 				return"";
-			
-			//EXPIERY LOGIC GOES HERE
-			int M_Locator_ID = ml.getM_Locator_ID();
-			MStorageOnHand storageOnHand = OrderLineExpiryDate.getImmediateASI(po.getCtx(), ml.getM_Product_ID(), M_Locator_ID, po.get_TrxName(), po.get_ID());
+			MStorageOnHand storageOnHand = null;
 			BigDecimal notReserved = new BigDecimal(0);
 			BigDecimal freeQty = new BigDecimal(0);
+			int M_Locator_ID = ml.getM_Locator_ID();
 			
-			if(storageOnHand!= null){
-				ml.setM_AttributeSetInstance_ID(storageOnHand.getM_AttributeSetInstance_ID());
-				notReserved = MOrderLine.getNotReserved(po.getCtx(), 
-					M_Locator_ID, 
-					ml.getM_Product_ID(), 
-					storageOnHand.getM_AttributeSetInstance_ID(), 
-					ml.get_ID());
-					
-				notReserved = notReserved == null ? new BigDecimal(0) : notReserved;
-				freeQty = storageOnHand.getQtyOnHand().subtract(notReserved);
+			if(ml.getM_AttributeSetInstance_ID() == 0){ //NO LOT-BATCH PICKED
+				storageOnHand = OrderLineExpiryDate.getImmediateASI(po.getCtx(), ml.getM_Product_ID(), M_Locator_ID, ml.get_TrxName(), po.get_ID());
+				if(storageOnHand== null)
+					throw new AdempiereException("No more lot-batch available for this item!");
 				
-				//validate the entered quantity with onhand + notreserved 
-				if(ml.getMovementQty().doubleValue() > freeQty.doubleValue()){
-					
-					//validate zero free qty
-					if(freeQty.doubleValue() <= 0.0){
-						throw new AdempiereException("No more stock available for this item to place new movement!");
-					}
-					
-					ml.setMovementQty(freeQty);
-				}
-			}else{
-				throw new AdempiereException("No more stock available for this item to place new movement!");
+			}else{//VALIDATE THE ALREADY PICKED ATTRIBUTE SET INSTANCE 
+				storageOnHand = MStorageOnHand.get(po.getCtx(),  M_Locator_ID,  ml.getM_Product_ID(), ml.getM_AttributeSetInstance_ID(), ml.get_TrxName());
 			}
+			
+			//EXPIERY LOGIC GOES HERE
+			ml.setM_AttributeSetInstance_ID(storageOnHand.getM_AttributeSetInstance_ID());
+			notReserved = MOrderLine.getNotReserved(po.getCtx(), M_Locator_ID, ml.getM_Product_ID(), storageOnHand.getM_AttributeSetInstance_ID(), ml.get_ID());
+				
+			notReserved = notReserved == null ? new BigDecimal(0) : notReserved;
+			freeQty = storageOnHand.getQtyOnHand().subtract(notReserved);
+			
+			//validate the entered quantity with onhand + notreserved 
+			if(ml.getMovementQty().doubleValue() > freeQty.doubleValue()){
+				
+				//validate zero free qty
+				if(freeQty.doubleValue() <= 0.0)
+					throw new AdempiereException("No more stock available for this item to place new movement!");
+				else
+					ml.setMovementQty(freeQty);
+			}
+			
 		}
 		return null;
 	}
