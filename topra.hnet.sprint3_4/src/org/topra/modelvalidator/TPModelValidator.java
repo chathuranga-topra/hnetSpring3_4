@@ -1,18 +1,20 @@
 package org.topra.modelvalidator;
 
 import java.math.BigDecimal;
-import java.util.Properties;
-
 import org.adempiere.exceptions.AdempiereException;
 import org.compiere.model.MAttributeSetInstance;
 import org.compiere.model.MClient;
 import org.compiere.model.MDocType;
 import org.compiere.model.MInOut;
 import org.compiere.model.MInOutLine;
+import org.compiere.model.MMovement;
+import org.compiere.model.MMovementLine;
 import org.compiere.model.MOrderLine;
 import org.compiere.model.MStorageOnHand;
 import org.compiere.model.ModelValidationEngine;
 import org.compiere.model.PO;
+import org.compiere.model.Query;
+import org.topra.collouts.OrderLineExpiryDate;
 import org.compiere.model.ModelValidator;
 
 //org.topra.modelvalidator.TPModelValidator
@@ -27,86 +29,113 @@ public class TPModelValidator implements ModelValidator{
 		//Doc validators
 		engine.addDocValidate(MInOut.Table_Name, this);
 		//model validators
-		//engine.addModelChange(MInOutLine.Table_Name, this);
 		engine.addModelChange(MOrderLine.Table_Name, this);
+		engine.addModelChange(MMovementLine.Table_Name, this);
 	}
 
-	@Override
-	public int getAD_Client_ID() {
-		// TODO Auto-generated method stub
-		return ad_client_id;
-	}
-
-	@Override
-	public String login(int AD_Org_ID, int AD_Role_ID, int AD_User_ID) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
+	@SuppressWarnings("deprecation")
 	@Override
 	public String modelChange(PO po, int type) throws Exception {
 		
-		//Shipment Expiry control
-		/*if(po.get_TableName().equalsIgnoreCase(MInOutLine.Table_Name) && (type == CHANGETYPE_NEW || type == CHANGETYPE_CHANGE)){
-			MInOutLine inOutLine = (MInOutLine) po;
-			MDocType dc = (MDocType) inOutLine.getM_InOut().getC_DocType();
-			
-			if(dc.get_ValueAsBoolean("IsExpiryControl")){
-				MAttributeSetInstance instance = (MAttributeSetInstance) inOutLine.getM_AttributeSetInstance();
-				
-				if(instance == null || instance.getGuaranteeDate() == null)
-					throw new AdempiereException("MISSING EXPIRY DATE - Please fill expiry date!");
-			}
-			
-		}	
-		*/	
 		//Sales order Expiry control	
 		if(po.get_TableName().equalsIgnoreCase(MOrderLine.Table_Name) 
 				&& (type == CHANGETYPE_NEW || type == CHANGETYPE_CHANGE)
 		){
-			MOrderLine ol = (MOrderLine) po;
-			//VALIDATE FOR DOCUMWNT TYPE
-			MDocType dt = (MDocType) ol.getC_Order().getC_DocTypeTarget();
 			
+			MOrderLine ol = (MOrderLine) po;
+			int M_Locator_ID = ol.getC_Order().getM_Warehouse_ID();
+			
+			//VALIDATE FOR DOCUMWNT TYPE
+ 			MDocType dt = (MDocType) ol.getC_Order().getC_DocTypeTarget();
 			if(!dt.get_ValueAsBoolean("IsExpiryControl"))
-			{
-				//document validate for drafted and in progress
-				if(!ol.getC_Order().getDocAction().equals("CO") || !ol.getC_Order().getDocAction().equals("PR"))
-					return"";
+				return"";
+			//VALIDATE FOR DOCUMENT STATUS USING WORKFLOWS
+			if(this.getWorkFlowCount(po , ol.getC_Order_ID()) != 0)
+				return"";
+			//VALIDATE FOR ALREADY PICKED
+			BigDecimal notReserved = new BigDecimal(0);
+			BigDecimal freeQty = new BigDecimal(0);
+			MStorageOnHand storageOnHand = null;
+			if(ol.getM_AttributeSetInstance_ID() == 0){ //NO LOT-BATCH PICKED
+				storageOnHand = OrderLineExpiryDate.getImmediateASI(po.getCtx(), ol.getM_Product_ID(), M_Locator_ID, ol.get_TrxName(), po.get_ID());
+				if(storageOnHand== null)
+					throw new AdempiereException("No more lot-batch available for this item!");
+				
+			}else{//VALIDATE THE ALREADY PICKED ATTRIBUTE SET INSTANCE 
+				storageOnHand = MStorageOnHand.get(po.getCtx(),  M_Locator_ID,  ol.getM_Product_ID(), ol.getM_AttributeSetInstance_ID(), ol.get_TrxName());
 			}
 			
+			ol.setM_AttributeSetInstance_ID(storageOnHand.getM_AttributeSetInstance_ID());
+			notReserved = MOrderLine.getNotReserved(po.getCtx(), 
+					ol.getM_Warehouse_ID(), 
+					ol.getM_Product_ID(), 
+					storageOnHand.getM_AttributeSetInstance_ID(), 
+					ol.get_ID());
+				
+			notReserved = notReserved == null?new BigDecimal(0) :notReserved;
 			
-			int M_Locator_ID = ol.getC_Order().getM_Warehouse_ID();
-			MStorageOnHand[] onHands = MStorageOnHand.getAllWithASI(po.getCtx(), ol.getM_Product_ID(), M_Locator_ID, false, ol.get_TrxName());
+			freeQty = storageOnHand.getQtyOnHand().subtract(notReserved);
+			
+			//validate the entered quantity with onhand + notreserved 
+			if(ol.getQtyEntered().doubleValue() > freeQty.doubleValue()){
+				
+				//validate zero free qty
+				if(freeQty.doubleValue() <= 0.0){
+					throw new AdempiereException("No more stock available for this item to place new order!");
+				}
+				
+				ol.setQty(freeQty);
+				ol.setPrice();
+				ol.setLineNetAmt();
+			}
+			
+		}
+		//Inventory movement expiary validation
+		else if(po.get_TableName().equalsIgnoreCase(MMovementLine.Table_Name) 
+						&& (type == CHANGETYPE_NEW || type == CHANGETYPE_CHANGE)){
+			
+			MMovementLine ml = (MMovementLine) po;
+			MMovement movement = (MMovement) ml.getM_Movement();
+			//VALIDATE FOR DOCUMWNT TYPE
+ 			MDocType dt = (MDocType) movement.getC_DocType();
+			//DOCUMANR LEVEL C0NTROLL
+			if(!dt.get_ValueAsBoolean("IsExpiryControl"))
+				return"";
+			//VALIDATE FOR DOCUMENT STATUS USING WORKFLOWS
+			if(this.getWorkFlowCount(po , movement.get_ID()) != 0)
+				return"";
+			
+			//EXPIERY LOGIC GOES HERE
+			int M_Locator_ID = ml.getM_Locator_ID();
+			MStorageOnHand storageOnHand = OrderLineExpiryDate.getImmediateASI(po.getCtx(), ml.getM_Product_ID(), M_Locator_ID, po.get_TrxName(), po.get_ID());
 			BigDecimal notReserved = new BigDecimal(0);
 			BigDecimal freeQty = new BigDecimal(0);
 			
-			for(MStorageOnHand oh : onHands){
-				
+			if(storageOnHand!= null){
+				ml.setM_AttributeSetInstance_ID(storageOnHand.getM_AttributeSetInstance_ID());
 				notReserved = MOrderLine.getNotReserved(po.getCtx(), 
-					ol.getM_Warehouse_ID(), 
-					ol.getM_Product_ID(), 
-					oh.getM_AttributeSetInstance_ID(), 
-					ol.get_ID());
+					M_Locator_ID, 
+					ml.getM_Product_ID(), 
+					storageOnHand.getM_AttributeSetInstance_ID(), 
+					ml.get_ID());
+					
+				notReserved = notReserved == null ? new BigDecimal(0) : notReserved;
+				freeQty = storageOnHand.getQtyOnHand().subtract(notReserved);
 				
-				notReserved = notReserved == null?new BigDecimal(0) :notReserved;
-				
-				freeQty = oh.getQtyOnHand().subtract(notReserved);
-				
-				if(freeQty.doubleValue() <=0){
-					continue;
-				}
-				ol.setM_AttributeSetInstance_ID(oh.get_ID());
 				//validate the entered quantity with onhand + notreserved 
-				if(ol.getQtyEntered().doubleValue() > freeQty.doubleValue()){
-					ol.setQty(freeQty);
+				if(ml.getMovementQty().doubleValue() > freeQty.doubleValue()){
+					
+					//validate zero free qty
+					if(freeQty.doubleValue() <= 0.0){
+						throw new AdempiereException("No more stock available for this item to place new movement!");
+					}
+					
+					ml.setMovementQty(freeQty);
 				}
-				
-				if(ol.getM_AttributeSetInstance() != null)
-					break;
+			}else{
+				throw new AdempiereException("No more stock available for this item to place new movement!");
 			}
 		}
-		
 		return null;
 	}
 
@@ -133,6 +162,33 @@ public class TPModelValidator implements ModelValidator{
 			}
 		}
 		
+		return null;
+	}
+	
+	
+	private int getWorkFlowCount(PO po , int Record_ID){
+		
+		int AD_Workflow_ID = 0;
+		
+		if(po.get_TableName().equalsIgnoreCase("C_OrderLine"))
+			AD_Workflow_ID = 116;
+		else if(po.get_TableName().equalsIgnoreCase("M_MovementLine"))
+			AD_Workflow_ID = 128;
+		
+		return new Query(po.getCtx(), "AD_WF_Process", " AD_Workflow_ID=? AND Record_ID" +"=?", po.get_TrxName())
+		.setParameters(AD_Workflow_ID,Record_ID)
+		.list().size();
+	}
+
+	@Override
+	public int getAD_Client_ID() {
+		// TODO Auto-generated method stub
+		return ad_client_id;
+	}
+
+	@Override
+	public String login(int AD_Org_ID, int AD_Role_ID, int AD_User_ID) {
+		// TODO Auto-generated method stub
 		return null;
 	}
 }

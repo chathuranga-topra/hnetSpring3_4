@@ -44,17 +44,17 @@ public class OrderLineExpiryDate implements IColumnCallout{
 		M_Product_ID = (int) value;
 		M_Locator_ID = (int) mTab.getParentTab().getValue("M_WareHouse_ID");
 			
-			MStorageOnHand storageOnHand = getImmediateASI(ctx ,M_Product_ID ,M_Locator_ID,mTab.getTrxInfo(), mTab);
-			
-			if(storageOnHand!= null)
+			MStorageOnHand storageOnHand = getImmediateASI(ctx ,M_Product_ID ,M_Locator_ID,mTab.getTrxInfo(), mTab.getRecord_ID());
+			if(storageOnHand!= null){
 				mTab.setValue("M_AttributeSetInstance_ID", storageOnHand.getM_AttributeSetInstance_ID());
+			}
 		}
 		
-		return null;
+		return "";
 	}
 	
 	//getting the immediate expiery date based Attribute set instance
-	public MStorageOnHand getImmediateASI(Properties ctx,int M_Product_ID , int M_Locator_ID , String trx , GridTab mTab){
+	public static MStorageOnHand getImmediateASI(Properties ctx,int M_Product_ID , int M_Locator_ID , String trx , int C_OrderLine_ID){
 		
 		MStorageOnHand storageOnHand = null;
 		BigDecimal reserved = null;
@@ -82,7 +82,7 @@ public class OrderLineExpiryDate implements IColumnCallout{
 			rs = pstmt.executeQuery ();
 			while(rs.next ()){
 				storageOnHand = new MStorageOnHand (ctx, rs, trx);
-				reserved = MOrderLine.getNotReserved(ctx, M_Locator_ID, M_Product_ID, storageOnHand.getM_AttributeSetInstance_ID(),mTab.getRecord_ID());
+				reserved = MOrderLine.getNotReserved(ctx, M_Locator_ID, M_Product_ID, storageOnHand.getM_AttributeSetInstance_ID(),C_OrderLine_ID);
 				
 				//No reserved quantity
 				if(reserved == null)
@@ -113,5 +113,4 @@ public class OrderLineExpiryDate implements IColumnCallout{
 		
 		return storageOnHand;
 	}
-
 }
