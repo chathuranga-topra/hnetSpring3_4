@@ -52,6 +52,9 @@ public class TPModelValidator implements ModelValidator{
 			//VALIDATE FOR DOCUMENT STATUS USING WORKFLOWS
 			if(this.getWorkFlowCount(po , ol.getC_Order_ID()) != 0)
 				return"";
+			//VALIDATE ITEM IS STOCKED
+			if(!ol.getM_Product().isStocked())
+				return "";
 			//VALIDATE FOR ALREADY PICKED
 			BigDecimal notReserved = new BigDecimal(0);
 			BigDecimal freeQty = new BigDecimal(0);
@@ -62,6 +65,7 @@ public class TPModelValidator implements ModelValidator{
 					throw new AdempiereException("No more lot-batch available for this item!");
 				
 			}else{//VALIDATE THE ALREADY PICKED ATTRIBUTE SET INSTANCE 
+				
 				storageOnHand = MStorageOnHand.get(po.getCtx(),  M_Locator_ID,  ol.getM_Product_ID(), ol.getM_AttributeSetInstance_ID(), ol.get_TrxName());
 			}
 			
@@ -104,6 +108,9 @@ public class TPModelValidator implements ModelValidator{
 			//VALIDATE FOR DOCUMENT STATUS USING WORKFLOWS
 			if(this.getWorkFlowCount(po , movement.get_ID()) != 0)
 				return"";
+			//VALIDATE ITEM IS STOCKED
+			if(!ml.getM_Product().isStocked())
+				return "";
 			MStorageOnHand storageOnHand = null;
 			BigDecimal notReserved = new BigDecimal(0);
 			BigDecimal freeQty = new BigDecimal(0);
